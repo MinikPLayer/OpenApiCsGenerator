@@ -157,7 +157,6 @@ namespace OpenApiCsGenerator
                         var pms = JsonConvert.DeserializeObject<List<Parameter>>(param.First.ToString());
                         if (pms != null)
                             Parameters = pms;                     
-
                         break;
 
                     default: 
@@ -206,15 +205,15 @@ namespace OpenApiCsGenerator
 
         public PathsTreeNode? GetByPath(string path) => GetByPath(path.Split('/'));
 
-        public override string ToString()
+        public string ToString(string overrideName)
         {
-            if(!IsEndpoint)
+            if (!IsEndpoint)
                 return Name;
 
             string header;
             var headerBuilder = new StringBuilder();
-            headerBuilder.Append($"public static async Task<ApiResult<{ReturnType}>> {Name.ToTitleCase()}(");
-            if(Parameters.Count != 0)
+            headerBuilder.Append($"public static async Task<ApiResult<{ReturnType}>> {overrideName.ToTitleCase()}(");
+            if (Parameters.Count != 0)
             {
                 foreach (var p in Parameters)
                     headerBuilder.Append($"{p.Type} {p.Name}, ");
@@ -232,6 +231,8 @@ namespace OpenApiCsGenerator
 
             return header + contents.ToString();
         }
+
+        public override string ToString() => ToString(Name);
 
         public string Print(int depth = 0)
         {

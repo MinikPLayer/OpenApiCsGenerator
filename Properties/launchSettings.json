@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "OpenApiCsGenerator": {
+      "commandName": "Project",
+      "commandLineArgs": "http://localhost:5127/swagger/v1/swagger.json"
+    }
+  }
+}

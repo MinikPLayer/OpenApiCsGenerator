@@ -18,6 +18,7 @@ namespace OpenApiCsGenerator
 
     internal class PathsTreeNode : List<PathsTreeNode>
     {
+
         public class Parameter
         {
 
@@ -58,8 +59,48 @@ namespace OpenApiCsGenerator
                     throw new Exception("Type with no value specified");
 
                 var name = value.Value!.ToString();
-                if (name != "array")
-                    return name!;
+                if (name == null)
+                    throw new Exception("Value null");
+
+                switch(name)
+                {
+                    case "integer":
+                        var formatType = schemaDescendants.OfType<JProperty>().Where(x => x.Name == "format").FirstOrDefault();
+                        if(formatType != null)
+                        {
+                            var formatValue = formatType.Descendants().OfType<JValue>().FirstOrDefault();
+                            if (formatValue == null)
+                                throw new Exception("Format type with no value specified");
+
+                            var formatName = formatValue.Value!.ToString();
+                            if (formatName == null)
+                                throw new Exception("Format value null");
+
+                            switch(formatName)
+                            {
+                                case "int32":
+                                    return "int";
+                                case "int64":
+                                    return "long";
+                                default:
+                                    throw new Exception("Unknown format type " + formatName);
+                            }
+                        }
+                        else
+                        {
+                            return "int";
+                        }
+
+                    case "boolean":
+                        return "bool";
+
+                    case "array":
+                        array = true;
+                        break;
+
+                    default:
+                        return name;
+                }
 
                 array = true;
             }
@@ -69,7 +110,7 @@ namespace OpenApiCsGenerator
                 throw new Exception("No custom or plain type specified");
 
             var customValue = customTypes.Descendants().OfType<JValue>().First().ToString();
-            var typeName = $"ApiTypes.{customValue.Split('/').Last()}";
+            var typeName = $"{Program.DataStructurePrefix}.{customValue.Split('/').Last()}";
             if (array)
                 typeName = $"List<{typeName}>";
 
@@ -172,7 +213,7 @@ namespace OpenApiCsGenerator
 
             string header;
             var headerBuilder = new StringBuilder();
-            headerBuilder.Append($"public async ApiResult<{ReturnType}> {Name.ToTitleCase()}(");
+            headerBuilder.Append($"public static async Task<ApiResult<{ReturnType}>> {Name.ToTitleCase()}(");
             if(Parameters.Count != 0)
             {
                 foreach (var p in Parameters)

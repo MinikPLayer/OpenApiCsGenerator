@@ -13,6 +13,7 @@ namespace OpenApiCsGenerator
     {
         Get,
         Post,
+        PostContent,
         Delete
     }
 
@@ -98,19 +99,48 @@ namespace OpenApiCsGenerator
                         array = true;
                         break;
 
+                    case "string":
+                        var formatting = schemaDescendants.OfType<JProperty>().FirstOrDefault(x => x.Name == "format");
+                        if (formatting == null)
+                            return "string";
+
+                        var formattingFormatValue = formatting.Descendants().OfType<JValue>().FirstOrDefault();
+                        if (formattingFormatValue == null)
+                            return "string";
+
+                        var formatV = formattingFormatValue.Value!.ToString();
+                        switch(formatV)
+                        {
+                            case "date-time":
+                                return "DateTime";
+
+                            default:
+                                return formatV;
+                        }
+
                     default:
                         return name;
                 }
-
-                array = true;
             }
 
             var customTypes = schemaDescendants.OfType<JProperty>().Where(x => x.Name == "$ref").FirstOrDefault();
-            if (customTypes == null)
-                throw new Exception("No custom or plain type specified");
+            var itemTypes = schemaDescendants.OfType<JProperty>().Where(x => x.Name == "items").FirstOrDefault();
 
-            var customValue = customTypes.Descendants().OfType<JValue>().First().ToString();
-            var typeName = $"{Program.DataStructurePrefix}.{customValue.Split('/').Last()}";
+            string typeName = "";
+            if(customTypes != null)
+            {
+                var customValue = customTypes.Descendants().OfType<JValue>().First().ToString();
+                typeName = $"{Program.DataStructurePrefix}.{customValue.Split('/').Last()}";
+            }
+            else if(itemTypes != null)
+            {
+                typeName = DecodeTypeName(itemTypes.Descendants());
+            }
+            else
+            {
+                throw new Exception("No custom or plain type specified");
+            }
+                
             if (array)
                 typeName = $"List<{typeName}>";
 
@@ -156,7 +186,26 @@ namespace OpenApiCsGenerator
                     case "parameters":
                         var pms = JsonConvert.DeserializeObject<List<Parameter>>(param.First.ToString());
                         if (pms != null)
-                            Parameters = pms;                     
+                            Parameters.AddRange(pms);
+                        
+                        break;
+
+                    case "requestBody":
+                        var content = param.First.OfType<JProperty>().Where(x => x.Name == "content").FirstOrDefault();
+                        if (content == null)
+                            break;
+
+                        respDesc = content.Descendants().OfType<JProperty>().Where(x => x.Name == "schema").FirstOrDefault();
+                        if (respDesc == null)
+                            break;
+
+                        if (Type != ApiTypes.Post)
+                            throw new ArgumentException("To post content, type must be \"Post\"");
+
+                        Type = ApiTypes.PostContent;
+                        var type = DecodeTypeName(respDesc.Descendants());
+                        Parameters.Add(new Parameter() { Location = "body", Name = "content", Type = type });
+                        
                         break;
 
                     default: 
@@ -224,9 +273,18 @@ namespace OpenApiCsGenerator
             header = headerBuilder.ToString();
 
             var contents = new StringBuilder();
-            contents.Append($" => await Api.{Type}<{ReturnType}>(\"{Path}\"");
-            foreach (var p in Parameters)
+            var bodyParams = Parameters.Where(x => x.Location == "body").ToList();
+            var bodyParamsStr = bodyParams.Count > 0 ? $", {bodyParams[0].Type}" : "";
+
+            contents.Append($" => await Api.{Type}<{ReturnType}{bodyParamsStr}>(\"{Path}\"");
+
+            foreach(var p in bodyParams)
+                contents.Append($", {p.Name}");
+
+            var restParams = Parameters.Except(bodyParams);
+            foreach (var p in restParams)
                 contents.Append($", \"{p.Name}\".ToApiParam({p.Name})");
+
             contents.Append(");");
 
             return header + contents.ToString();
